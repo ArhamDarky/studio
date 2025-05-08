@@ -15,14 +15,14 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, MapPin, RefreshCw, ListCollapse } from 'lucide-react'; // MapPin might be less relevant now
+import { Loader2, RefreshCw, ListCollapse } from 'lucide-react';
 
 // --- Interfaces for API Responses ---
 interface CtaRoute {
   rt: string;
   rtnm: string;
-  rtclr: string;
-  rtdd: string;
+  rtclr: string; // color of route, e.g. "#FF0000"
+  rtdd: string; // route designator, e.g. "Red Line"
 }
 interface CtaDirection {
   dir: string;
@@ -30,38 +30,21 @@ interface CtaDirection {
 interface CtaStop {
   stpid: string;
   stpnm: string;
-  lat: number; // Kept for data structure, though not used for map
-  lon: number; // Kept for data structure, though not used for map
+  // lat and lon were removed as map features are currently disabled
 }
 interface CtaPrediction {
-  ty: string; 
-  stpnm: string; 
-  stpid: string; 
-  vid: string; 
-  rt: string; 
-  rtdir: string; 
-  des: string; 
-  prdtm: string; 
-  dly: boolean; 
-  prdctdn: string; 
+  ty: string; // type, e.g. "A" for arrival
+  stpnm: string; // stop name
+  stpid: string; // stop id
+  vid: string; // vehicle id
+  rt: string; // route
+  rtdir: string; // route direction
+  des: string; // destination
+  prdtm: string; // prediction time, e.g. "20230315 14:30"
+  dly: boolean; // delayed
+  prdctdn: string; // prediction countdown, e.g. "5 MIN" or "DUE"
 }
-interface CtaVehicle {
-  vid: string;
-  tmstmp: string;
-  lat: string; // Kept for data structure, though not used for map
-  lon: string; // Kept for data structure, though not used for map
-  hdg: string; 
-  pid: number;
-  rt: string;
-  des: string;
-  pdist: number;
-  dly: boolean;
-  spd: number;
-  tatripid: string;
-  origtatripno: string;
-  tablockid: string;
-  zone: string;
-}
+// CtaVehicle interface removed as map features are currently disabled
 
 // --- Helper Functions ---
 const formatPredictionTime = (timestamp: string): string => {
@@ -83,14 +66,14 @@ export function BusView() {
   const [stops, setStops] = useState<CtaStop[]>([]);
   const [selectedStopId, setSelectedStopId] = useState<string>('');
   const [predictions, setPredictions] = useState<CtaPrediction[]>([]);
-  const [vehicles, setVehicles] = useState<CtaVehicle[]>([]);
+  // vehicles state removed as map features are currently disabled
   
   const [isLoading, setIsLoading] = useState({
     routes: false,
     directions: false,
     stops: false,
     predictions: false,
-    vehicles: false,
+    // vehicles: false, // Part of map features, removed
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -122,7 +105,7 @@ export function BusView() {
       setStops([]);
       setSelectedStopId('');
       setPredictions([]);
-      setVehicles([]);
+      // setVehicles([]); // Part of map features, removed
       return;
     }
     const fetchDirections = async () => {
@@ -143,13 +126,13 @@ export function BusView() {
     setStops([]);
     setSelectedStopId('');
     setPredictions([]);
-    setVehicles([]);
+    // setVehicles([]); // Part of map features, removed
   }, [selectedRoute]);
 
   useEffect(() => {
     if (!selectedRoute || !selectedDirection) {
       setStops([]);
-      setVehicles([]); 
+      // setVehicles([]); // Part of map features, removed
       setSelectedStopId('');
       setPredictions([]);
       return;
@@ -169,26 +152,10 @@ export function BusView() {
       setIsLoading(prev => ({ ...prev, stops: false }));
     };
 
-    const fetchVehicles = async () => {
-      setIsLoading(prev => ({ ...prev, vehicles: true }));
-      setError(null);
-      try {
-        const res = await fetch(`/api/bus?action=vehicles&rt=${selectedRoute}`);
-        if (!res.ok) throw new Error(`Failed to fetch vehicles: ${res.statusText}`);
-        const data = await res.json();
-        const filteredVehicles = (data.vehicle || []).filter((v: CtaVehicle) => 
-            v.rtdir && selectedDirection && v.rtdir.toLowerCase().startsWith(selectedDirection.toLowerCase().substring(0,Math.min(3, selectedDirection.length)))
-        );
-        setVehicles(filteredVehicles);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load vehicles.');
-        setVehicles([]);
-      }
-      setIsLoading(prev => ({ ...prev, vehicles: false }));
-    };
+    // fetchVehicles call removed as map features are currently disabled
 
     fetchStops();
-    fetchVehicles();
+    // fetchVehicles(); // Part of map features, removed
     setSelectedStopId('');
     setPredictions([]);
   }, [selectedRoute, selectedDirection]);
@@ -221,6 +188,8 @@ export function BusView() {
   const resetForm = () => {
     setSelectedRoute('');
     // Other states will be reset by chained useEffects.
+    // No need to reset isLoading here, as it's managed by fetch operations.
+    setError(null);
   };
 
   return (
@@ -246,7 +215,7 @@ export function BusView() {
             <Label htmlFor="route-select">Route</Label>
             <Select value={selectedRoute} onValueChange={setSelectedRoute} disabled={isLoading.routes}>
               <SelectTrigger id="route-select">
-                <SelectValue placeholder={isLoading.routes ? "Loading routes..." : "Select a route"} />
+                <SelectValue placeholder={isLoading.routes ? "Loading routes..." : (routes.length === 0 ? "No routes available" : "Select a route")} />
               </SelectTrigger>
               <SelectContent>
                 {routes.map(route => (
@@ -264,10 +233,10 @@ export function BusView() {
               <Select 
                 value={selectedDirection} 
                 onValueChange={setSelectedDirection} 
-                disabled={isLoading.directions || directions.length === 0}
+                disabled={isLoading.directions} // Changed: disable only while loading
               >
                 <SelectTrigger id="direction-select">
-                  <SelectValue placeholder={isLoading.directions ? "Loading directions..." : "Select a direction"} />
+                  <SelectValue placeholder={isLoading.directions ? "Loading directions..." : (directions.length === 0 && !isLoading.directions ? "No directions available" : "Select a direction")} />
                 </SelectTrigger>
                 <SelectContent>
                   {directions.map(dir => (
@@ -286,10 +255,10 @@ export function BusView() {
               <Select 
                 value={selectedStopId} 
                 onValueChange={setSelectedStopId} 
-                disabled={isLoading.stops || stops.length === 0}
+                disabled={isLoading.stops} // Changed: disable only while loading
               >
                 <SelectTrigger id="stop-select">
-                  <SelectValue placeholder={isLoading.stops ? "Loading stops..." : "Select a stop"} />
+                  <SelectValue placeholder={isLoading.stops ? "Loading stops..." : (stops.length === 0 && !isLoading.stops ? "No stops available" : "Select a stop")} />
                 </SelectTrigger>
                 <SelectContent>
                   {stops.map(stop => (
@@ -339,44 +308,8 @@ export function BusView() {
          </Card>
       )}
 
-      {selectedRoute && vehicles.length > 0 && (
-         <Card>
-            <CardHeader>
-                <CardTitle className="flex items-center"><MapPin className="h-5 w-5 mr-2" /> Active Buses on Route {selectedRoute}</CardTitle>
-            </CardHeader>
-            <CardContent>
-                 {isLoading.vehicles ? (
-                    <div className="flex items-center justify-center p-4">
-                        <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading vehicle data...
-                    </div>
-                 ) : (
-                    <ul className="space-y-2">
-                        {vehicles.map(bus => (
-                            <li key={bus.vid} className="text-sm p-2 border rounded-md">
-                                Bus ID: <strong>{bus.vid}</strong> heading towards <strong>{bus.des}</strong>
-                                <br />
-                                Speed: {bus.spd} mph
-                                {bus.dly && <span className="ml-2 px-2 py-0.5 bg-destructive/20 text-destructive text-xs rounded-full">Delayed</span>}
-                                <br />
-                                <span className="text-xs text-muted-foreground">Last updated: {new Date(bus.tmstmp.replace(/(\d{4})(\d{2})(\d{2}) (\d{2}:\d{2}:\d{2})/, '$1-$2-$3T$4Z')).toLocaleTimeString()}</span>
-                            </li>
-                        ))}
-                    </ul>
-                 )}
-                 
-            </CardContent>
-        </Card>
-      )}
-       {selectedRoute && !isLoading.vehicles && vehicles.length === 0 && selectedDirection && (
-         <Card>
-            <CardContent className="pt-6">
-                <p className="text-muted-foreground">No active buses currently reported for this route and direction.</p>
-            </CardContent>
-         </Card>
-      )}
+      {/* Map and vehicle list sections are removed as per previous request */}
 
     </div>
   );
 }
-
-    

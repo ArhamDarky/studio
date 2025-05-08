@@ -12,13 +12,15 @@ import {
   SidebarFooter,
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { LayoutDashboard, Bus, TrainFront, Wind, LogOut } from 'lucide-react';
+import { LayoutDashboard, Bus, TrainFront, Wind, LogOut, Info, Ticket } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/bus', label: 'Bus Tracking', icon: Bus },
   { href: '/train', label: 'Train Tracking', icon: TrainFront },
+  { href: '/metra', label: 'Metra Rail', icon: Ticket },
+  { href: '/about', label: 'About', icon: Info },
 ];
 
 export function AppSidebar() {
@@ -41,10 +43,10 @@ export function AppSidebar() {
               <Link href={item.href} legacyBehavior passHref>
                 <SidebarMenuButton
                   asChild
-                  isActive={pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/dashboard' || (pathname === '/' && item.href === '/dashboard'))}
+                  isActive={pathname === item.href || (pathname.startsWith(item.href + '/') && item.href !== '/') || (pathname === '/' && item.href === '/dashboard')}
                   tooltip={{ children: item.label, side: 'right', align: 'center' }}
                   className={cn(
-                    (pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/dashboard') || (pathname === '/' && item.href === '/dashboard'))
+                    (pathname === item.href || (pathname.startsWith(item.href + '/') && item.href !== '/') || (pathname === '/' && item.href === '/dashboard'))
                       ? 'bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90 hover:text-sidebar-primary-foreground'
                       : 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
                     'justify-start'

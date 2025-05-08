@@ -22,11 +22,12 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, MapPin, Navigation, RefreshCw, ListCollapse } from 'lucide-react';
 
 // Dynamically import react-leaflet components
-const MapContainer = dynamic(() => import('react-leaflet').then(mod => mod.MapContainer), { ssr: false, loading: () => <MapPlaceholder /> });
+// Only import MapContainer and useMap statically, others are dynamic
+import { MapContainer, useMap } from 'react-leaflet';
 const TileLayer = dynamic(() => import('react-leaflet').then(mod => mod.TileLayer), { ssr: false });
 const Marker = dynamic(() => import('react-leaflet').then(mod => mod.Marker), { ssr: false });
 const Popup = dynamic(() => import('react-leaflet').then(mod => mod.Popup), { ssr: false });
-const useMap = dynamic(() => import('react-leaflet').then(mod => mod.useMap), { ssr: false });
+
 
 
 // --- Interfaces for API Responses ---
@@ -117,9 +118,9 @@ const FitBounds: FC<FitBoundsProps> = ({ L_instance, buses, userLocation, select
     if (points.length > 0) {
       map.fitBounds(L_instance.latLngBounds(points), { padding: [50, 50], maxZoom: 16 });
     } else if (userLocation) {
-      if (points.length === 1 && userLocation) { // This condition might be redundant if points.length > 0 already checked
-         map.setView([userLocation.lat, userLocation.lon], 14);
-      }
+      // This condition is covered by points.length > 0 and points.length === 1
+      // If only userLocation, map.setView will handle it.
+      map.setView([userLocation.lat, userLocation.lon], 14);
     } else if (points.length === 0) {
       map.setView([41.8781, -87.6298], 12); // Default Chicago view
     }
@@ -161,6 +162,7 @@ export function BusView() {
   });
   const [error, setError] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
+  const [mapInstanceKey, setMapInstanceKey] = useState(0); // Key for re-mounting MapContainer
 
   const selectedStopDetails = useMemo(() => stops.find(s => s.stpid === selectedStopId), [stops, selectedStopId]);
 
@@ -247,6 +249,7 @@ export function BusView() {
       setSelectedStopId('');
       setPredictions([]);
       setVehicles([]);
+      setMapInstanceKey(prev => prev + 1); // Force map re-mount
       return;
     }
     const fetchDirections = async () => {
@@ -268,6 +271,7 @@ export function BusView() {
     setSelectedStopId('');
     setPredictions([]);
     setVehicles([]);
+    setMapInstanceKey(prev => prev + 1); // Force map re-mount
   }, [selectedRoute]);
 
   useEffect(() => {
@@ -276,6 +280,7 @@ export function BusView() {
       setVehicles([]); 
       setSelectedStopId('');
       setPredictions([]);
+      setMapInstanceKey(prev => prev + 1); // Force map re-mount
       return;
     }
     const fetchStops = async () => {
@@ -315,6 +320,7 @@ export function BusView() {
     fetchVehicles();
     setSelectedStopId('');
     setPredictions([]);
+    setMapInstanceKey(prev => prev + 1); // Force map re-mount
   }, [selectedRoute, selectedDirection]);
 
   const handleFetchPredictions = async () => {
@@ -339,11 +345,13 @@ export function BusView() {
     } else {
         setPredictions([]);
     }
+    setMapInstanceKey(prev => prev + 1); // Force map re-mount when stop changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStopId]); 
 
   const resetForm = () => {
     setSelectedRoute('');
+    setMapInstanceKey(prev => prev + 1); // Force map re-mount on reset
     // Other states will be reset by chained useEffects.
   };
 
@@ -477,56 +485,71 @@ export function BusView() {
             <CardTitle className="flex items-center"><MapPin className="h-5 w-5 mr-2"/>Live Bus Map</CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Added key to this div to force re-mount when mapReady status changes, helping prevent "Map container already initialized" */}
-            <div key={String(mapReady)} className='w-full h-[400px]'> 
-             {!mapReady || !actualBusArrowIconCreator ? (
-                <MapPlaceholder message={isLoading.leaflet ? "Initializing Map Components..." : "Loading Map..."} />
-             ) : (
+            <div key={mapInstanceKey} className="w-full h-[400px]">
+              {(!mapReady || !actualBusArrowIconCreator) ? (
+                <MapPlaceholder
+                  message={isLoading.leaflet 
+                    ? "Initializing Map Components..." 
+                    : "Loading Map..."} 
+                />
+              ) : (
                 <MapContainer
-                    center={defaultMapCenter}
-                    zoom={13}
-                    scrollWheelZoom={true}
-                    className="h-full w-full rounded-md z-0"
+                  center={defaultMapCenter}
+                  zoom={13}
+                  scrollWheelZoom={true}
+                  className="h-full w-full rounded-md z-0"
                 >
-                    <TileLayer
+                  <TileLayer
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    />
-                    {vehicles.map((bus) => (
+                  />
+
+                  {vehicles.map(bus => (
                     <Marker
-                        key={bus.vid}
-                        position={[parseFloat(bus.lat), parseFloat(bus.lon)]}
-                        icon={actualBusArrowIconCreator(bus.hdg)}
+                      key={bus.vid}
+                      position={[parseFloat(bus.lat), parseFloat(bus.lon)]}
+                      icon={actualBusArrowIconCreator(bus.hdg)}
                     >
-                        <Popup>
+                      <Popup>
                         Bus {bus.vid}<br />
                         Route: {bus.rt} to {bus.des}<br/>
                         Speed: {bus.spd} mph {bus.dly ? "(Delayed)" : ""}
-                        </Popup>
+                      </Popup>
                     </Marker>
-                    ))}
-                    {userLocation && userLocationIconInstance && (
-                    <Marker position={[userLocation.lat, userLocation.lon]} icon={userLocationIconInstance}>
-                        <Popup>Your Location</Popup>
+                  ))}
+
+                  {userLocation && userLocationIconInstance && (
+                    <Marker
+                      position={[userLocation.lat, userLocation.lon]}
+                      icon={userLocationIconInstance}
+                    >
+                      <Popup>Your Location</Popup>
                     </Marker>
-                    )}
-                    {selectedStopDetails && L && (
-                        <Marker 
-                            position={[selectedStopDetails.lat, selectedStopDetails.lon]} 
-                            icon={L.divIcon({ 
-                                className: 'custom-stop-marker-icon', 
-                                html: `<div class="p-1 bg-accent text-accent-foreground rounded-full shadow-md text-xs whitespace-nowrap text-center">${selectedStopDetails.stpnm}</div>`,
-                                // iconSize: undefined, // Let Leaflet calculate or set explicitly
-                                iconAnchor: undefined // Let Leaflet calculate or set explicitly
-                            })}
-                        >
-                            <Popup>{selectedStopDetails.stpnm}</Popup>
-                        </Marker>
-                    )}
-                    {L && <FitBounds L_instance={L} buses={vehicles} userLocation={userLocation} selectedStop={selectedStopDetails} />}
+                  )}
+
+                  {selectedStopDetails && L && (
+                    <Marker 
+                      position={[selectedStopDetails.lat, selectedStopDetails.lon]} 
+                      icon={L.divIcon({ 
+                        className: 'custom-stop-marker-icon', 
+                        html: `<div class="p-1 bg-accent text-accent-foreground rounded-full shadow-md text-xs whitespace-nowrap text-center">${selectedStopDetails.stpnm}</div>`,
+                      })}
+                    >
+                      <Popup>{selectedStopDetails.stpnm}</Popup>
+                    </Marker>
+                  )}
+
+                  {L && (
+                    <FitBounds
+                      L_instance={L}
+                      buses={vehicles}
+                      userLocation={userLocation}
+                      selectedStop={selectedStopDetails}
+                    />
+                  )}
                 </MapContainer>
-             )}
-             </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}

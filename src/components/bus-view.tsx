@@ -3,9 +3,9 @@
 import type { FC } from 'react';
 import { useEffect, useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
-// import L from 'leaflet'; // Removed: L will be dynamically imported
+// L will be dynamically imported
 import 'leaflet/dist/leaflet.css';
-import type { LatLngExpression, Icon as LeafletIcon, DivIcon as LeafletDivIcon } from 'leaflet';
+import type { LatLngExpression, Icon as LeafletIconType, DivIcon as LeafletDivIconType, PointExpression } from 'leaflet'; // Corrected type imports
 
 
 import { Button } from '@/components/ui/button';
@@ -117,9 +117,12 @@ const FitBounds: FC<FitBoundsProps> = ({ L_instance, buses, userLocation, select
     if (points.length > 0) {
       map.fitBounds(L_instance.latLngBounds(points), { padding: [50, 50], maxZoom: 16 });
     } else if (userLocation) {
-      map.setView([userLocation.lat, userLocation.lon], 14);
+      if (points.length === 1 && userLocation) { // This condition might be redundant if points.length > 0 already checked
+         map.setView([userLocation.lat, userLocation.lon], 14);
+      }
+    } else if (points.length === 0) {
+      map.setView([41.8781, -87.6298], 12); // Default Chicago view
     }
-
   }, [L_instance, buses, userLocation, selectedStop, map]);
 
   return null;
@@ -135,8 +138,9 @@ const MapPlaceholder: FC<{ message?: string }> = ({ message = "Loading Map..." }
 
 export function BusView() {
   const [L, setL] = useState<typeof import('leaflet') | null>(null);
-  const [userLocationIconInstance, setUserLocationIconInstance] = useState<LeafletIcon | null>(null);
-  const [busArrowIconCreatorInstance, setBusArrowIconCreatorInstance] = useState<((heading: string) => LeafletDivIcon) | null>(null);
+  const [userLocationIconInstance, setUserLocationIconInstance] = useState<LeafletIconType | null>(null);
+  // The state holds the function that *creates* the icon, not the icon itself, because heading changes.
+  const [busArrowIconCreatorFactory, setBusArrowIconCreatorFactory] = useState<(() => (heading: string) => LeafletDivIconType) | null>(null);
   
   const [routes, setRoutes] = useState<CtaRoute[]>([]);
   const [selectedRoute, setSelectedRoute] = useState<string>('');
@@ -176,16 +180,16 @@ export function BusView() {
           popupAnchor: [1, -34],
           shadowSize: [41, 41]
         }));
-
-        setBusArrowIconCreatorInstance(() => (heading: string) => {
+        
+        setBusArrowIconCreatorFactory(() => () => (heading: string) => { // Note the double function for the factory
           const numericHeading = parseInt(heading, 10);
           return new LInstance.DivIcon({
             className: 'bg-transparent border-none',
             html: `<div style="transform: rotate(${numericHeading}deg); font-size: 24px; color: hsl(var(--primary));">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-navigation"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
                    </div>`,
-            iconSize: [24, 24] as any, // Leaflet types can be picky, 'any' for simplicity here
-            iconAnchor: [12, 12] as any,
+            iconSize: [24, 24] as PointExpression, 
+            iconAnchor: [12, 12] as PointExpression,
           });
         });
         setIsLoading(prev => ({ ...prev, leaflet: false }));
@@ -197,22 +201,26 @@ export function BusView() {
     }
   }, []);
 
-  // Get user location
   useEffect(() => {
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setUserLocation({
-          lat: position.coords.latitude,
-          lon: position.coords.longitude,
-        });
-      },
-      () => { 
-        setUserLocation({ lat: 41.8781, lon: -87.6298 }); // Chicago downtown fallback
-      }
-    );
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            setUserLocation({
+              lat: position.coords.latitude,
+              lon: position.coords.longitude,
+            });
+          },
+          () => { 
+            setUserLocation({ lat: 41.8781, lon: -87.6298 }); 
+            console.warn("Geolocation permission denied or error. Using default location.");
+          }
+        );
+    } else {
+        setUserLocation({ lat: 41.8781, lon: -87.6298 });
+        console.warn("Geolocation not supported by this browser. Using default location.");
+    }
   }, []);
 
-  // Fetch routes
   useEffect(() => {
     const fetchRoutes = async () => {
       setIsLoading(prev => ({ ...prev, routes: true }));
@@ -231,11 +239,14 @@ export function BusView() {
     fetchRoutes();
   }, []);
 
-  // Fetch directions when route changes
   useEffect(() => {
     if (!selectedRoute) {
       setDirections([]);
       setSelectedDirection('');
+      setStops([]);
+      setSelectedStopId('');
+      setPredictions([]);
+      setVehicles([]);
       return;
     }
     const fetchDirections = async () => {
@@ -259,19 +270,19 @@ export function BusView() {
     setVehicles([]);
   }, [selectedRoute]);
 
-  // Fetch stops and vehicles when direction changes
   useEffect(() => {
     if (!selectedRoute || !selectedDirection) {
       setStops([]);
-      setVehicles([]);
+      setVehicles([]); 
       setSelectedStopId('');
+      setPredictions([]);
       return;
     }
     const fetchStops = async () => {
       setIsLoading(prev => ({ ...prev, stops: true }));
       setError(null);
       try {
-        const res = await fetch(`/api/bus?action=stops&rt=${selectedRoute}&dir=${selectedDirection}`);
+        const res = await fetch(`/api/bus?action=stops&rt=${selectedRoute}&dir=${encodeURIComponent(selectedDirection)}`);
         if (!res.ok) throw new Error(`Failed to fetch stops: ${res.statusText}`);
         const data = await res.json();
         setStops(data.stops || []);
@@ -290,10 +301,9 @@ export function BusView() {
         if (!res.ok) throw new Error(`Failed to fetch vehicles: ${res.statusText}`);
         const data = await res.json();
         const filteredVehicles = (data.vehicle || []).filter((v: CtaVehicle) => 
-            v.rtdir && v.rtdir.toLowerCase().startsWith(selectedDirection.toLowerCase().substring(0,3))
+            v.rtdir && selectedDirection && v.rtdir.toLowerCase().startsWith(selectedDirection.toLowerCase().substring(0,Math.min(3, selectedDirection.length)))
         );
         setVehicles(filteredVehicles);
-
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load vehicles.');
         setVehicles([]);
@@ -334,20 +344,16 @@ export function BusView() {
 
   const resetForm = () => {
     setSelectedRoute('');
-    setDirections([]);
-    setSelectedDirection('');
-    setStops([]);
-    setSelectedStopId('');
-    setPredictions([]);
-    setVehicles([]);
-    setError(null);
+    // Other states will be reset by chained useEffects.
   };
 
   const defaultMapCenter: LatLngExpression = userLocation 
     ? [userLocation.lat, userLocation.lon] 
     : [41.8781, -87.6298]; 
 
-  const mapReady = !!L && !!userLocationIconInstance && !!busArrowIconCreatorInstance && !isLoading.leaflet;
+  const mapReady = !!L && !!userLocationIconInstance && !!busArrowIconCreatorFactory && !isLoading.leaflet;
+  const actualBusArrowIconCreator = busArrowIconCreatorFactory ? busArrowIconCreatorFactory() : null;
+
 
   return (
     <div className="space-y-6 p-1">
@@ -387,7 +393,11 @@ export function BusView() {
           {selectedRoute && (
             <div>
               <Label htmlFor="direction-select">Direction</Label>
-              <Select value={selectedDirection} onValueChange={setSelectedDirection} disabled={isLoading.directions || directions.length === 0}>
+              <Select 
+                value={selectedDirection} 
+                onValueChange={setSelectedDirection} 
+                disabled={isLoading.directions || directions.length === 0}
+              >
                 <SelectTrigger id="direction-select">
                   <SelectValue placeholder={isLoading.directions ? "Loading directions..." : "Select a direction"} />
                 </SelectTrigger>
@@ -405,14 +415,18 @@ export function BusView() {
           {selectedDirection && (
             <div>
               <Label htmlFor="stop-select">Stop</Label>
-              <Select value={selectedStopId} onValueChange={setSelectedStopId} disabled={isLoading.stops || stops.length === 0}>
+              <Select 
+                value={selectedStopId} 
+                onValueChange={setSelectedStopId} 
+                disabled={isLoading.stops || stops.length === 0}
+              >
                 <SelectTrigger id="stop-select">
                   <SelectValue placeholder={isLoading.stops ? "Loading stops..." : "Select a stop"} />
                 </SelectTrigger>
                 <SelectContent>
                   {stops.map(stop => (
                     <SelectItem key={stop.stpid} value={stop.stpid}>
-                      {stop.stpnm}
+                      {stop.stpnm} ({stop.stpid})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -438,9 +452,9 @@ export function BusView() {
           <CardContent>
             <ul className="space-y-2">
               {predictions.map((p, i) => (
-                <li key={i} className="text-sm p-2 border rounded-md">
-                  Route <strong>{p.rt}</strong> towards <strong>{p.rtdir}</strong>
-                  <br/>Arriving at <strong>{formatPredictionTime(p.prdtm)}</strong> ({p.prdctdn} min)
+                <li key={`${p.vid}-${p.prdtm}-${i}`} className="text-sm p-2 border rounded-md">
+                  Route <strong>{p.rt}</strong> towards <strong>{p.des}</strong> ({p.rtdir})
+                  <br/>Arriving at <strong>{formatPredictionTime(p.prdtm)}</strong> (countdown: {p.prdctdn})
                   {p.dly && <span className="ml-2 px-2 py-0.5 bg-destructive/20 text-destructive text-xs rounded-full">Delayed</span>}
                 </li>
               ))}
@@ -463,24 +477,26 @@ export function BusView() {
             <CardTitle className="flex items-center"><MapPin className="h-5 w-5 mr-2"/>Live Bus Map</CardTitle>
           </CardHeader>
           <CardContent>
-             {!mapReady ? (
+            {/* Added key to this div to force re-mount when mapReady status changes, helping prevent "Map container already initialized" */}
+            <div key={String(mapReady)} className='w-full h-[400px]'> 
+             {!mapReady || !actualBusArrowIconCreator ? (
                 <MapPlaceholder message={isLoading.leaflet ? "Initializing Map Components..." : "Loading Map..."} />
              ) : (
                 <MapContainer
                     center={defaultMapCenter}
                     zoom={13}
                     scrollWheelZoom={true}
-                    className="h-[400px] w-full rounded-md z-0"
+                    className="h-full w-full rounded-md z-0"
                 >
                     <TileLayer
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
-                    {vehicles.map((bus, idx) => (
+                    {vehicles.map((bus) => (
                     <Marker
-                        key={idx}
+                        key={bus.vid}
                         position={[parseFloat(bus.lat), parseFloat(bus.lon)]}
-                        icon={busArrowIconCreatorInstance!(bus.hdg)}
+                        icon={actualBusArrowIconCreator(bus.hdg)}
                     >
                         <Popup>
                         Bus {bus.vid}<br />
@@ -489,19 +505,28 @@ export function BusView() {
                         </Popup>
                     </Marker>
                     ))}
-                    {userLocation && (
-                    <Marker position={[userLocation.lat, userLocation.lon]} icon={userLocationIconInstance!}>
+                    {userLocation && userLocationIconInstance && (
+                    <Marker position={[userLocation.lat, userLocation.lon]} icon={userLocationIconInstance}>
                         <Popup>Your Location</Popup>
                     </Marker>
                     )}
                     {selectedStopDetails && L && (
-                        <Marker position={[selectedStopDetails.lat, selectedStopDetails.lon]} icon={L.divIcon({ className: 'custom-div-icon', html: `<div class="p-1 bg-accent text-accent-foreground rounded-full shadow-md text-xs">${selectedStopDetails.stpnm}</div>`, iconSize: L.point(150,30), iconAnchor: L.point(75,15)})}>
+                        <Marker 
+                            position={[selectedStopDetails.lat, selectedStopDetails.lon]} 
+                            icon={L.divIcon({ 
+                                className: 'custom-stop-marker-icon', 
+                                html: `<div class="p-1 bg-accent text-accent-foreground rounded-full shadow-md text-xs whitespace-nowrap text-center">${selectedStopDetails.stpnm}</div>`,
+                                // iconSize: undefined, // Let Leaflet calculate or set explicitly
+                                iconAnchor: undefined // Let Leaflet calculate or set explicitly
+                            })}
+                        >
                             <Popup>{selectedStopDetails.stpnm}</Popup>
                         </Marker>
                     )}
                     {L && <FitBounds L_instance={L} buses={vehicles} userLocation={userLocation} selectedStop={selectedStopDetails} />}
                 </MapContainer>
              )}
+             </div>
           </CardContent>
         </Card>
       )}

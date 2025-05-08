@@ -88,3 +88,31 @@
     /* font-family removed to allow Next/Font (Geist) to take precedence */
   }
 }
+
+/* Leaflet specific styles to ensure map controls and popups are visible and styled correctly */
+.leaflet-control-container .leaflet-control {
+  @apply bg-card text-card-foreground shadow-md rounded-sm border-border;
+}
+.leaflet-control-zoom a {
+  @apply text-card-foreground;
+}
+.leaflet-control-zoom a:hover {
+  @apply bg-muted text-card-foreground;
+}
+.leaflet-popup-content-wrapper {
+  @apply bg-card text-card-foreground rounded-md shadow-lg;
+}
+.leaflet-popup-content {
+   @apply text-sm;
+}
+.leaflet-popup-tip-container .leaflet-popup-tip {
+  @apply bg-card shadow-md;
+}
+.leaflet-container a.leaflet-popup-close-button {
+  @apply text-card-foreground/70 hover:text-card-foreground;
+}
+
+.leaflet-marker-icon, .leaflet-marker-shadow {
+  /* Ensures default leaflet icons paths are resolved correctly by Webpack or similar bundlers if not using custom icons exclusively. */
+  /* Typically handled by importing 'leaflet/dist/leaflet.css' */
+}

@@ -1,11 +1,12 @@
-
 'use client';
 
 import type { FC } from 'react';
 import { useEffect, useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
-import L from 'leaflet';
+// import L from 'leaflet'; // Removed: L will be dynamically imported
 import 'leaflet/dist/leaflet.css';
+import type { LatLngExpression, Icon as LeafletIcon, DivIcon as LeafletDivIcon } from 'leaflet';
+
 
 import { Button } from '@/components/ui/button';
 import {
@@ -15,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, MapPin, Navigation, RefreshCw, ListCollapse } from 'lucide-react';
@@ -79,29 +80,6 @@ interface UserLocation {
   lon: number;
 }
 
-// --- Leaflet Icon Setup ---
-const userLocationIcon = new L.Icon({
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
-
-const getBusArrowIcon = (heading: string): L.DivIcon => {
-  const numericHeading = parseInt(heading, 10);
-  return new L.DivIcon({
-    className: 'bg-transparent border-none',
-    html: `<div style="transform: rotate(${numericHeading}deg); font-size: 24px; color: hsl(var(--primary));">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-navigation"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
-           </div>`,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-  });
-};
-
 // --- Helper Functions ---
 const formatPredictionTime = (timestamp: string): string => {
   if (!timestamp || !timestamp.includes(' ')) return "N/A";
@@ -115,18 +93,19 @@ const formatPredictionTime = (timestamp: string): string => {
 
 // --- FitBounds Component for Map ---
 interface FitBoundsProps {
+  L_instance: typeof import('leaflet'); // Pass L instance
   buses: CtaVehicle[];
   userLocation: UserLocation | null;
   selectedStop: CtaStop | null;
 }
 
-const FitBounds: FC<FitBoundsProps> = ({ buses, userLocation, selectedStop }) => {
+const FitBounds: FC<FitBoundsProps> = ({ L_instance, buses, userLocation, selectedStop }) => {
   const map = useMap ? useMap() : null;
 
   useEffect(() => {
-    if (!map) return;
+    if (!map || !L_instance) return;
 
-    const points: L.LatLngExpression[] = [];
+    const points: LatLngExpression[] = [];
     if (userLocation) {
       points.push([userLocation.lat, userLocation.lon]);
     }
@@ -136,25 +115,29 @@ const FitBounds: FC<FitBoundsProps> = ({ buses, userLocation, selectedStop }) =>
     }
 
     if (points.length > 0) {
-      map.fitBounds(L.latLngBounds(points), { padding: [50, 50], maxZoom: 16 });
+      map.fitBounds(L_instance.latLngBounds(points), { padding: [50, 50], maxZoom: 16 });
     } else if (userLocation) {
       map.setView([userLocation.lat, userLocation.lon], 14);
     }
 
-  }, [buses, userLocation, selectedStop, map]);
+  }, [L_instance, buses, userLocation, selectedStop, map]);
 
   return null;
 };
 
-const MapPlaceholder: FC = () => (
+const MapPlaceholder: FC<{ message?: string }> = ({ message = "Loading Map..." }) => (
     <div className="aspect-video w-full bg-muted rounded-md flex items-center justify-center text-muted-foreground">
       <Loader2 className="h-8 w-8 animate-spin mr-2" />
-      Loading Map...
+      {message}
     </div>
 );
 
 
 export function BusView() {
+  const [L, setL] = useState<typeof import('leaflet') | null>(null);
+  const [userLocationIconInstance, setUserLocationIconInstance] = useState<LeafletIcon | null>(null);
+  const [busArrowIconCreatorInstance, setBusArrowIconCreatorInstance] = useState<((heading: string) => LeafletDivIcon) | null>(null);
+  
   const [routes, setRoutes] = useState<CtaRoute[]>([]);
   const [selectedRoute, setSelectedRoute] = useState<string>('');
   const [directions, setDirections] = useState<CtaDirection[]>([]);
@@ -170,11 +153,49 @@ export function BusView() {
     stops: false,
     predictions: false,
     vehicles: false,
+    leaflet: true,
   });
   const [error, setError] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
 
   const selectedStopDetails = useMemo(() => stops.find(s => s.stpid === selectedStopId), [stops, selectedStopId]);
+
+  useEffect(() => {
+    setIsLoading(prev => ({ ...prev, leaflet: true }));
+    if (typeof window !== 'undefined') {
+      import('leaflet').then(leafletModule => {
+        const LInstance = leafletModule.default || leafletModule;
+        setL(LInstance);
+
+        setUserLocationIconInstance(new LInstance.Icon({
+          iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+          iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowSize: [41, 41]
+        }));
+
+        setBusArrowIconCreatorInstance(() => (heading: string) => {
+          const numericHeading = parseInt(heading, 10);
+          return new LInstance.DivIcon({
+            className: 'bg-transparent border-none',
+            html: `<div style="transform: rotate(${numericHeading}deg); font-size: 24px; color: hsl(var(--primary));">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-navigation"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+                   </div>`,
+            iconSize: [24, 24] as any, // Leaflet types can be picky, 'any' for simplicity here
+            iconAnchor: [12, 12] as any,
+          });
+        });
+        setIsLoading(prev => ({ ...prev, leaflet: false }));
+      }).catch(err => {
+        console.error("Failed to load Leaflet:", err);
+        setError("Map components could not be loaded.");
+        setIsLoading(prev => ({ ...prev, leaflet: false }));
+      });
+    }
+  }, []);
 
   // Get user location
   useEffect(() => {
@@ -185,7 +206,7 @@ export function BusView() {
           lon: position.coords.longitude,
         });
       },
-      () => { // Error callback
+      () => { 
         setUserLocation({ lat: 41.8781, lon: -87.6298 }); // Chicago downtown fallback
       }
     );
@@ -232,7 +253,6 @@ export function BusView() {
       setIsLoading(prev => ({ ...prev, directions: false }));
     };
     fetchDirections();
-    // Reset downstream state
     setStops([]);
     setSelectedStopId('');
     setPredictions([]);
@@ -269,9 +289,8 @@ export function BusView() {
         const res = await fetch(`/api/bus?action=vehicles&rt=${selectedRoute}`);
         if (!res.ok) throw new Error(`Failed to fetch vehicles: ${res.statusText}`);
         const data = await res.json();
-        // Filter vehicles by selected direction client-side if API returns all
         const filteredVehicles = (data.vehicle || []).filter((v: CtaVehicle) => 
-            v.rtdir && v.rtdir.toLowerCase().startsWith(selectedDirection.toLowerCase().substring(0,3)) // Match "Northbound" with "Nor", etc.
+            v.rtdir && v.rtdir.toLowerCase().startsWith(selectedDirection.toLowerCase().substring(0,3))
         );
         setVehicles(filteredVehicles);
 
@@ -284,12 +303,10 @@ export function BusView() {
 
     fetchStops();
     fetchVehicles();
-    // Reset downstream state
     setSelectedStopId('');
     setPredictions([]);
   }, [selectedRoute, selectedDirection]);
 
-  // Fetch predictions when stop changes (or manually triggered)
   const handleFetchPredictions = async () => {
     if (!selectedRoute || !selectedStopId) return;
     setIsLoading(prev => ({ ...prev, predictions: true }));
@@ -307,13 +324,13 @@ export function BusView() {
   };
   
   useEffect(() => {
-    if (selectedStopId) { // Auto-fetch when stop is selected
+    if (selectedStopId) { 
         handleFetchPredictions();
     } else {
         setPredictions([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStopId]); // selectedRoute is implicitly handled by clearing selectedStopId
+  }, [selectedStopId]); 
 
   const resetForm = () => {
     setSelectedRoute('');
@@ -326,9 +343,11 @@ export function BusView() {
     setError(null);
   };
 
-  const defaultMapCenter: L.LatLngExpression = userLocation 
+  const defaultMapCenter: LatLngExpression = userLocation 
     ? [userLocation.lat, userLocation.lon] 
-    : [41.8781, -87.6298]; // Chicago fallback
+    : [41.8781, -87.6298]; 
+
+  const mapReady = !!L && !!userLocationIconInstance && !!busArrowIconCreatorInstance && !isLoading.leaflet;
 
   return (
     <div className="space-y-6 p-1">
@@ -438,19 +457,20 @@ export function BusView() {
          </Card>
       )}
 
-
       {selectedRoute && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center"><MapPin className="h-5 w-5 mr-2"/>Live Bus Map</CardTitle>
           </CardHeader>
           <CardContent>
-             {typeof window !== 'undefined' && (
+             {!mapReady ? (
+                <MapPlaceholder message={isLoading.leaflet ? "Initializing Map Components..." : "Loading Map..."} />
+             ) : (
                 <MapContainer
                     center={defaultMapCenter}
                     zoom={13}
                     scrollWheelZoom={true}
-                    className="h-[400px] w-full rounded-md z-0" // z-0 to ensure it's below other UI elements if overlapping
+                    className="h-[400px] w-full rounded-md z-0"
                 >
                     <TileLayer
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -460,7 +480,7 @@ export function BusView() {
                     <Marker
                         key={idx}
                         position={[parseFloat(bus.lat), parseFloat(bus.lon)]}
-                        icon={getBusArrowIcon(bus.hdg)}
+                        icon={busArrowIconCreatorInstance!(bus.hdg)}
                     >
                         <Popup>
                         Bus {bus.vid}<br />
@@ -470,16 +490,16 @@ export function BusView() {
                     </Marker>
                     ))}
                     {userLocation && (
-                    <Marker position={[userLocation.lat, userLocation.lon]} icon={userLocationIcon}>
+                    <Marker position={[userLocation.lat, userLocation.lon]} icon={userLocationIconInstance!}>
                         <Popup>Your Location</Popup>
                     </Marker>
                     )}
-                    {selectedStopDetails && (
+                    {selectedStopDetails && L && (
                         <Marker position={[selectedStopDetails.lat, selectedStopDetails.lon]} icon={L.divIcon({ className: 'custom-div-icon', html: `<div class="p-1 bg-accent text-accent-foreground rounded-full shadow-md text-xs">${selectedStopDetails.stpnm}</div>`, iconSize: L.point(150,30), iconAnchor: L.point(75,15)})}>
                             <Popup>{selectedStopDetails.stpnm}</Popup>
                         </Marker>
                     )}
-                    <FitBounds buses={vehicles} userLocation={userLocation} selectedStop={selectedStopDetails} />
+                    {L && <FitBounds L_instance={L} buses={vehicles} userLocation={userLocation} selectedStop={selectedStopDetails} />}
                 </MapContainer>
              )}
           </CardContent>

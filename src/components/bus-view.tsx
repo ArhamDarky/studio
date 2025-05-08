@@ -1,4 +1,3 @@
-
 'use client';
 
 import type { FC } from 'react';
@@ -21,8 +20,8 @@ import { Loader2, RefreshCw, ListCollapse } from 'lucide-react';
 interface CtaRoute {
   rt: string;
   rtnm: string;
-  rtclr: string; // color of route, e.g. "#FF0000"
-  rtdd: string; // route designator, e.g. "Red Line"
+  rtclr: string; 
+  rtdd: string; 
 }
 interface CtaDirection {
   dir: string;
@@ -30,21 +29,19 @@ interface CtaDirection {
 interface CtaStop {
   stpid: string;
   stpnm: string;
-  // lat and lon were removed as map features are currently disabled
 }
 interface CtaPrediction {
-  ty: string; // type, e.g. "A" for arrival
-  stpnm: string; // stop name
-  stpid: string; // stop id
-  vid: string; // vehicle id
-  rt: string; // route
-  rtdir: string; // route direction
-  des: string; // destination
-  prdtm: string; // prediction time, e.g. "20230315 14:30"
-  dly: boolean; // delayed
-  prdctdn: string; // prediction countdown, e.g. "5 MIN" or "DUE"
+  ty: string; 
+  stpnm: string; 
+  stpid: string; 
+  vid: string; 
+  rt: string; 
+  rtdir: string; 
+  des: string; 
+  prdtm: string; 
+  dly: boolean; 
+  prdctdn: string; 
 }
-// CtaVehicle interface removed as map features are currently disabled
 
 // --- Helper Functions ---
 const formatPredictionTime = (timestamp: string): string => {
@@ -66,14 +63,12 @@ export function BusView() {
   const [stops, setStops] = useState<CtaStop[]>([]);
   const [selectedStopId, setSelectedStopId] = useState<string>('');
   const [predictions, setPredictions] = useState<CtaPrediction[]>([]);
-  // vehicles state removed as map features are currently disabled
   
   const [isLoading, setIsLoading] = useState({
     routes: false,
     directions: false,
     stops: false,
     predictions: false,
-    // vehicles: false, // Part of map features, removed
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -86,9 +81,19 @@ export function BusView() {
       setError(null);
       try {
         const res = await fetch('/api/bus?action=routes');
-        if (!res.ok) throw new Error(`Failed to fetch routes: ${res.statusText}`);
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({ message: `Failed to fetch routes: ${res.statusText}` }));
+          throw new Error(errorData.message || `Failed to fetch routes: ${res.statusText}`);
+        }
         const data = await res.json();
-        setRoutes(data.routes || []);
+        if (data && data.routes) {
+          setRoutes(data.routes);
+        } else if (data && data.errors) { 
+          setError(`API Error: ${data.errors.map((e: {msg: string}) => e.msg).join(', ')}`);
+          setRoutes([]);
+        } else {
+          setRoutes([]);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load routes.');
         setRoutes([]);
@@ -105,7 +110,6 @@ export function BusView() {
       setStops([]);
       setSelectedStopId('');
       setPredictions([]);
-      // setVehicles([]); // Part of map features, removed
       return;
     }
     const fetchDirections = async () => {
@@ -113,9 +117,19 @@ export function BusView() {
       setError(null);
       try {
         const res = await fetch(`/api/bus?action=directions&rt=${selectedRoute}`);
-        if (!res.ok) throw new Error(`Failed to fetch directions: ${res.statusText}`);
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({ message: `Failed to fetch directions: ${res.statusText}` }));
+          throw new Error(errorData.message || `Failed to fetch directions: ${res.statusText}`);
+        }
         const data = await res.json();
-        setDirections(data.directions || []);
+        if (data && data.directions) {
+          setDirections(data.directions);
+        } else if (data && data.errors) {
+          setError(`API Error: ${data.errors.map((e: {msg: string}) => e.msg).join(', ')}`);
+          setDirections([]);
+        } else {
+          setDirections([]);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load directions.');
         setDirections([]);
@@ -126,13 +140,11 @@ export function BusView() {
     setStops([]);
     setSelectedStopId('');
     setPredictions([]);
-    // setVehicles([]); // Part of map features, removed
   }, [selectedRoute]);
 
   useEffect(() => {
     if (!selectedRoute || !selectedDirection) {
       setStops([]);
-      // setVehicles([]); // Part of map features, removed
       setSelectedStopId('');
       setPredictions([]);
       return;
@@ -142,9 +154,19 @@ export function BusView() {
       setError(null);
       try {
         const res = await fetch(`/api/bus?action=stops&rt=${selectedRoute}&dir=${encodeURIComponent(selectedDirection)}`);
-        if (!res.ok) throw new Error(`Failed to fetch stops: ${res.statusText}`);
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({ message: `Failed to fetch stops: ${res.statusText}` }));
+          throw new Error(errorData.message || `Failed to fetch stops: ${res.statusText}`);
+        }
         const data = await res.json();
-        setStops(data.stops || []);
+        if (data && data.stops) {
+          setStops(data.stops);
+        } else if (data && data.errors) {
+          setError(`API Error: ${data.errors.map((e: {msg: string}) => e.msg).join(', ')}`);
+          setStops([]);
+        } else {
+          setStops([]);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load stops.');
         setStops([]);
@@ -152,10 +174,7 @@ export function BusView() {
       setIsLoading(prev => ({ ...prev, stops: false }));
     };
 
-    // fetchVehicles call removed as map features are currently disabled
-
     fetchStops();
-    // fetchVehicles(); // Part of map features, removed
     setSelectedStopId('');
     setPredictions([]);
   }, [selectedRoute, selectedDirection]);
@@ -166,9 +185,20 @@ export function BusView() {
     setError(null);
     try {
       const res = await fetch(`/api/bus?action=predictions&rt=${selectedRoute}&stpid=${selectedStopId}`);
-      if (!res.ok) throw new Error(`Failed to fetch predictions: ${res.statusText}`);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ message: `Failed to fetch predictions: ${res.statusText}` }));
+        throw new Error(errorData.message || `Failed to fetch predictions: ${res.statusText}`);
+      }
       const data = await res.json();
-      setPredictions(data.prd || []);
+      if (data && data.prd) {
+        setPredictions(data.prd);
+      } else if (data && data.error) { // CTA predictions API uses "error" not "errors"
+        setError(`API Error: ${data.error.map((e: {msg: string}) => e.msg).join(', ')}`);
+        setPredictions([]);
+      }
+       else {
+        setPredictions([]);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load predictions.');
       setPredictions([]);
@@ -188,12 +218,11 @@ export function BusView() {
   const resetForm = () => {
     setSelectedRoute('');
     // Other states will be reset by chained useEffects.
-    // No need to reset isLoading here, as it's managed by fetch operations.
     setError(null);
   };
 
   return (
-    <div className="space-y-6 p-1">
+    <div className="space-y-6 p-1 bus-view-container">
       {error && (
         <Alert variant="destructive">
           <AlertTitle>Error</AlertTitle>
@@ -213,7 +242,11 @@ export function BusView() {
         <CardContent className="space-y-4">
           <div>
             <Label htmlFor="route-select">Route</Label>
-            <Select value={selectedRoute} onValueChange={setSelectedRoute} disabled={isLoading.routes}>
+            <Select
+              value={selectedRoute}
+              onValueChange={setSelectedRoute}
+              disabled={isLoading.routes}
+            >
               <SelectTrigger id="route-select">
                 <SelectValue placeholder={isLoading.routes ? "Loading routes..." : (routes.length === 0 ? "No routes available" : "Select a route")} />
               </SelectTrigger>
@@ -227,16 +260,20 @@ export function BusView() {
             </Select>
           </div>
 
-          {selectedRoute && (
+          {selectedRoute && ( // Only show if a route is selected
             <div>
               <Label htmlFor="direction-select">Direction</Label>
               <Select 
                 value={selectedDirection} 
                 onValueChange={setSelectedDirection} 
-                disabled={isLoading.directions} // Changed: disable only while loading
+                disabled={isLoading.directions || !selectedRoute}
               >
                 <SelectTrigger id="direction-select">
-                  <SelectValue placeholder={isLoading.directions ? "Loading directions..." : (directions.length === 0 && !isLoading.directions ? "No directions available" : "Select a direction")} />
+                  <SelectValue placeholder={
+                      !selectedRoute ? "Select a route first" : // Should not be visible if selectedRoute is false
+                      isLoading.directions ? "Loading directions..." :
+                      (directions.length === 0 ? "No directions found" : "Select a direction")
+                  } />
                 </SelectTrigger>
                 <SelectContent>
                   {directions.map(dir => (
@@ -249,16 +286,20 @@ export function BusView() {
             </div>
           )}
 
-          {selectedDirection && (
+          {selectedDirection && ( // Only show if a direction is selected
             <div>
               <Label htmlFor="stop-select">Stop</Label>
               <Select 
                 value={selectedStopId} 
                 onValueChange={setSelectedStopId} 
-                disabled={isLoading.stops} // Changed: disable only while loading
+                disabled={isLoading.stops || !selectedDirection}
               >
                 <SelectTrigger id="stop-select">
-                  <SelectValue placeholder={isLoading.stops ? "Loading stops..." : (stops.length === 0 && !isLoading.stops ? "No stops available" : "Select a stop")} />
+                  <SelectValue placeholder={
+                    !selectedDirection ? "Select a direction first" : // Should not be visible
+                    isLoading.stops ? "Loading stops..." :
+                    (stops.length === 0 ? "No stops found" : "Select a stop")
+                  } />
                 </SelectTrigger>
                 <SelectContent>
                   {stops.map(stop => (
@@ -289,10 +330,13 @@ export function BusView() {
           <CardContent>
             <ul className="space-y-2">
               {predictions.map((p, i) => (
-                <li key={`${p.vid}-${p.prdtm}-${i}`} className="text-sm p-2 border rounded-md">
-                  Route <strong>{p.rt}</strong> towards <strong>{p.des}</strong> ({p.rtdir})
-                  <br/>Arriving at <strong>{formatPredictionTime(p.prdtm)}</strong> (countdown: {p.prdctdn})
-                  {p.dly && <span className="ml-2 px-2 py-0.5 bg-destructive/20 text-destructive text-xs rounded-full">Delayed</span>}
+                <li key={`${p.vid}-${p.prdtm}-${i}`} className="text-sm p-3 border rounded-md shadow-sm bg-card hover:bg-muted/50 transition-colors">
+                  <div className="font-semibold">Route <strong>{p.rt}</strong> to <strong>{p.des}</strong></div>
+                  <div className="text-muted-foreground text-xs">Direction: {p.rtdir}</div>
+                  <div className="mt-1">
+                    Arrival: <strong>{formatPredictionTime(p.prdtm)}</strong> ({p.prdctdn})
+                    {p.dly && <span className="ml-2 px-2 py-0.5 bg-destructive/20 text-destructive text-xs rounded-full">Delayed</span>}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -300,16 +344,13 @@ export function BusView() {
         </Card>
       )}
       
-      {selectedStopId && !isLoading.predictions && predictions.length === 0 && (
+      {selectedStopId && !isLoading.predictions && predictions.length === 0 && !error && ( // Added !error condition
          <Card>
             <CardContent className="pt-6">
-                <p className="text-muted-foreground">No bus predictions available for this stop at the moment.</p>
+                <p className="text-muted-foreground">No bus predictions available for this stop at the moment, or the selected route may not service this stop directly.</p>
             </CardContent>
          </Card>
       )}
-
-      {/* Map and vehicle list sections are removed as per previous request */}
-
     </div>
   );
 }

@@ -113,7 +113,10 @@ export function BusView() {
       return;
     }
     const fetchDirections = async () => {
-      setIsLoading(prev => ({ ...prev, directions: true }));
+      setIsLoading(prev => ({ ...prev, directions: true, stops: false, predictions: false }));
+      setStops([]); // Clear stops when direction changes
+      setSelectedStopId('');
+      setPredictions([]);
       setError(null);
       try {
         const res = await fetch(`/api/bus?action=directions&rt=${selectedRoute}`);
@@ -137,9 +140,6 @@ export function BusView() {
       setIsLoading(prev => ({ ...prev, directions: false }));
     };
     fetchDirections();
-    setStops([]);
-    setSelectedStopId('');
-    setPredictions([]);
   }, [selectedRoute]);
 
   useEffect(() => {
@@ -150,7 +150,8 @@ export function BusView() {
       return;
     }
     const fetchStops = async () => {
-      setIsLoading(prev => ({ ...prev, stops: true }));
+      setIsLoading(prev => ({ ...prev, stops: true, predictions: false }));
+      setPredictions([]); // Clear predictions when stop selection changes
       setError(null);
       try {
         const res = await fetch(`/api/bus?action=stops&rt=${selectedRoute}&dir=${encodeURIComponent(selectedDirection)}`);
@@ -175,12 +176,14 @@ export function BusView() {
     };
 
     fetchStops();
-    setSelectedStopId('');
-    setPredictions([]);
+    setSelectedStopId(''); // Reset selected stop when direction changes
   }, [selectedRoute, selectedDirection]);
 
   const handleFetchPredictions = async () => {
-    if (!selectedRoute || !selectedStopId) return;
+    if (!selectedRoute || !selectedStopId) {
+      setPredictions([]); // Clear predictions if no stop is selected
+      return;
+    }
     setIsLoading(prev => ({ ...prev, predictions: true }));
     setError(null);
     try {
@@ -192,12 +195,11 @@ export function BusView() {
       const data = await res.json();
       if (data && data.prd) {
         setPredictions(data.prd);
-      } else if (data && data.error) { // CTA predictions API uses "error" not "errors"
+      } else if (data && data.error) { 
         setError(`API Error: ${data.error.map((e: {msg: string}) => e.msg).join(', ')}`);
         setPredictions([]);
-      }
-       else {
-        setPredictions([]);
+      } else {
+        setPredictions([]); // Ensure predictions are cleared if API returns unexpected structure
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load predictions.');
@@ -210,21 +212,21 @@ export function BusView() {
     if (selectedStopId) { 
         handleFetchPredictions();
     } else {
-        setPredictions([]);
+        setPredictions([]); // Clear predictions if stop is deselected
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStopId]); 
+  }, [selectedStopId]); // Removed selectedRoute from deps to avoid refetching when only route changes with a stop already selected (might be desirable, but can cause quick flashes)
 
   const resetForm = () => {
     setSelectedRoute('');
-    // Other states will be reset by chained useEffects.
+    // Other states will be reset by chained useEffects clearing them.
     setError(null);
   };
 
   return (
     <div className="space-y-6 p-1 bus-view-container">
       {error && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" className="mb-4">
           <AlertTitle>Error</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -244,69 +246,99 @@ export function BusView() {
             <Label htmlFor="route-select">Route</Label>
             <Select
               value={selectedRoute}
-              onValueChange={setSelectedRoute}
-              disabled={isLoading.routes}
+              onValueChange={(value) => {
+                setSelectedRoute(value);
+                // When a new route is selected, clear subsequent selections
+                setSelectedDirection('');
+                setSelectedStopId('');
+                setDirections([]);
+                setStops([]);
+                setPredictions([]);
+              }}
+              disabled={isLoading.routes || routes.length === 0}
             >
-              <SelectTrigger id="route-select">
+              <SelectTrigger id="route-select" className="w-full">
                 <SelectValue placeholder={isLoading.routes ? "Loading routes..." : (routes.length === 0 ? "No routes available" : "Select a route")} />
               </SelectTrigger>
               <SelectContent>
-                {routes.map(route => (
-                  <SelectItem key={route.rt} value={route.rt}>
-                    {route.rt} - {route.rtnm}
-                  </SelectItem>
-                ))}
+                {isLoading.routes ? (
+                  <SelectItem value="loading-routes" disabled>Loading routes...</SelectItem>
+                ) : routes.length > 0 ? (
+                  routes.map(route => (
+                    <SelectItem key={route.rt} value={route.rt}>
+                      {route.rt} - {route.rtnm}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="no-routes" disabled>No routes available</SelectItem>
+                )}
               </SelectContent>
             </Select>
           </div>
 
-          {selectedRoute && ( // Only show if a route is selected
+          {selectedRoute && (
             <div>
               <Label htmlFor="direction-select">Direction</Label>
               <Select 
                 value={selectedDirection} 
-                onValueChange={setSelectedDirection} 
-                disabled={isLoading.directions || !selectedRoute}
+                onValueChange={(value) => {
+                  setSelectedDirection(value);
+                  // When a new direction is selected, clear subsequent selections
+                  setSelectedStopId('');
+                  setStops([]);
+                  setPredictions([]);
+                }}
+                disabled={isLoading.directions || directions.length === 0}
               >
-                <SelectTrigger id="direction-select">
+                <SelectTrigger id="direction-select" className="w-full">
                   <SelectValue placeholder={
-                      !selectedRoute ? "Select a route first" : // Should not be visible if selectedRoute is false
                       isLoading.directions ? "Loading directions..." :
                       (directions.length === 0 ? "No directions found" : "Select a direction")
                   } />
                 </SelectTrigger>
                 <SelectContent>
-                  {directions.map(dir => (
-                    <SelectItem key={dir.dir} value={dir.dir}>
-                      {dir.dir}
-                    </SelectItem>
-                  ))}
+                  {isLoading.directions ? (
+                     <SelectItem value="loading-directions" disabled>Loading directions...</SelectItem>
+                  ) : directions.length > 0 ? (
+                    directions.map(dir => (
+                      <SelectItem key={dir.dir} value={dir.dir}>
+                        {dir.dir}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-directions" disabled>No directions available for this route</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
           )}
 
-          {selectedDirection && ( // Only show if a direction is selected
+          {selectedDirection && ( 
             <div>
               <Label htmlFor="stop-select">Stop</Label>
               <Select 
                 value={selectedStopId} 
                 onValueChange={setSelectedStopId} 
-                disabled={isLoading.stops || !selectedDirection}
+                disabled={isLoading.stops || stops.length === 0}
               >
-                <SelectTrigger id="stop-select">
+                <SelectTrigger id="stop-select" className="w-full">
                   <SelectValue placeholder={
-                    !selectedDirection ? "Select a direction first" : // Should not be visible
                     isLoading.stops ? "Loading stops..." :
                     (stops.length === 0 ? "No stops found" : "Select a stop")
                   } />
                 </SelectTrigger>
                 <SelectContent>
-                  {stops.map(stop => (
-                    <SelectItem key={stop.stpid} value={stop.stpid}>
-                      {stop.stpnm} ({stop.stpid})
-                    </SelectItem>
-                  ))}
+                 {isLoading.stops ? (
+                    <SelectItem value="loading-stops" disabled>Loading stops...</SelectItem>
+                  ) : stops.length > 0 ? (
+                    stops.map(stop => (
+                      <SelectItem key={stop.stpid} value={stop.stpid}>
+                        {stop.stpnm} ({stop.stpid})
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-stops" disabled>No stops available for this direction</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -344,7 +376,7 @@ export function BusView() {
         </Card>
       )}
       
-      {selectedStopId && !isLoading.predictions && predictions.length === 0 && !error && ( // Added !error condition
+      {selectedStopId && !isLoading.predictions && predictions.length === 0 && !error && (
          <Card>
             <CardContent className="pt-6">
                 <p className="text-muted-foreground">No bus predictions available for this stop at the moment, or the selected route may not service this stop directly.</p>

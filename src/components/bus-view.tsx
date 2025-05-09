@@ -1,7 +1,9 @@
+
 'use client';
 
 import type { FC } from 'react';
 import { useEffect, useState, useMemo } from 'react';
+import Image from 'next/image'; // Added for placeholder image
 
 import { Button } from '@/components/ui/button';
 import {
@@ -11,10 +13,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, RefreshCw, ListCollapse } from 'lucide-react';
+import { Loader2, RefreshCw, ListCollapse, BusFront, Info } from 'lucide-react'; // Added BusFront and Info
 
 // --- Interfaces for API Responses ---
 interface CtaRoute {
@@ -65,7 +67,7 @@ export function BusView() {
   const [predictions, setPredictions] = useState<CtaPrediction[]>([]);
   
   const [isLoading, setIsLoading] = useState({
-    routes: false,
+    routes: true, // Start with routes loading true
     directions: false,
     stops: false,
     predictions: false,
@@ -114,7 +116,7 @@ export function BusView() {
     }
     const fetchDirections = async () => {
       setIsLoading(prev => ({ ...prev, directions: true, stops: false, predictions: false }));
-      setStops([]); // Clear stops when direction changes
+      setStops([]); 
       setSelectedStopId('');
       setPredictions([]);
       setError(null);
@@ -151,7 +153,7 @@ export function BusView() {
     }
     const fetchStops = async () => {
       setIsLoading(prev => ({ ...prev, stops: true, predictions: false }));
-      setPredictions([]); // Clear predictions when stop selection changes
+      setPredictions([]); 
       setError(null);
       try {
         const res = await fetch(`/api/bus?action=stops&rt=${selectedRoute}&dir=${encodeURIComponent(selectedDirection)}`);
@@ -176,12 +178,12 @@ export function BusView() {
     };
 
     fetchStops();
-    setSelectedStopId(''); // Reset selected stop when direction changes
+    setSelectedStopId(''); 
   }, [selectedRoute, selectedDirection]);
 
   const handleFetchPredictions = async () => {
     if (!selectedRoute || !selectedStopId) {
-      setPredictions([]); // Clear predictions if no stop is selected
+      setPredictions([]); 
       return;
     }
     setIsLoading(prev => ({ ...prev, predictions: true }));
@@ -196,10 +198,16 @@ export function BusView() {
       if (data && data.prd) {
         setPredictions(data.prd);
       } else if (data && data.error) { 
-        setError(`API Error: ${data.error.map((e: {msg: string}) => e.msg).join(', ')}`);
+        // CTA API sometimes returns error as an array of objects with a 'msg' field
+        const errorMessages = Array.isArray(data.error) ? data.error.map((e: {msg: string}) => e.msg).join(', ') : String(data.error);
+        setError(`API Error: ${errorMessages}`);
+        setPredictions([]);
+      } else if (data && data.errors) { // Handle { "bustime-response": { "errors": [...] } }
+        const errorMessages = Array.isArray(data.errors) ? data.errors.map((e: {msg: string}) => e.msg).join(', ') : String(data.errors);
+        setError(`API Error: ${errorMessages}`);
         setPredictions([]);
       } else {
-        setPredictions([]); // Ensure predictions are cleared if API returns unexpected structure
+        setPredictions([]); 
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load predictions.');
@@ -209,19 +217,44 @@ export function BusView() {
   };
   
   useEffect(() => {
-    if (selectedStopId) { 
+    if (selectedStopId && selectedRoute) { 
         handleFetchPredictions();
     } else {
-        setPredictions([]); // Clear predictions if stop is deselected
+        setPredictions([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStopId]); // Removed selectedRoute from deps to avoid refetching when only route changes with a stop already selected (might be desirable, but can cause quick flashes)
+  }, [selectedStopId, selectedRoute]);
 
   const resetForm = () => {
     setSelectedRoute('');
     // Other states will be reset by chained useEffects clearing them.
     setError(null);
   };
+
+  const renderInitialContent = () => {
+    return (
+      <div className="bus-view-container p-4 border border-border rounded-lg bg-card shadow-sm">
+        <div className="flex items-center mb-4">
+          <BusFront className="h-6 w-6 mr-2 text-primary" />
+          <h2 className="text-xl font-semibold text-card-foreground">Real-time Bus Tracker</h2>
+        </div>
+        <p className="text-muted-foreground mb-4">
+          Please select a route, direction, and stop to view live bus arrivals.
+        </p>
+        <div className="map-placeholder aspect-video bg-muted rounded-md overflow-hidden flex items-center justify-center text-muted-foreground shadow-inner">
+          <Image
+            src="https://picsum.photos/seed/busmapchicago/600/400"
+            alt="Bus Map Placeholder"
+            width={600}
+            height={400}
+            className="object-cover w-full h-full opacity-70"
+            data-ai-hint="city bus route"
+          />
+        </div>
+      </div>
+    );
+  };
+
 
   return (
     <div className="space-y-6 p-1 bus-view-container">
@@ -236,10 +269,13 @@ export function BusView() {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Bus Selection</span>
-            <Button variant="ghost" size="icon" onClick={resetForm} aria-label="Reset selections">
+            <Button variant="ghost" size="icon" onClick={resetForm} aria-label="Reset selections" disabled={!selectedRoute && !selectedDirection && !selectedStopId}>
               <RefreshCw className="h-5 w-5" />
             </Button>
           </CardTitle>
+           {isLoading.routes && !routes.length && (
+            <CardDescription>Loading available bus routes...</CardDescription>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
@@ -248,7 +284,6 @@ export function BusView() {
               value={selectedRoute}
               onValueChange={(value) => {
                 setSelectedRoute(value);
-                // When a new route is selected, clear subsequent selections
                 setSelectedDirection('');
                 setSelectedStopId('');
                 setDirections([]);
@@ -283,7 +318,6 @@ export function BusView() {
                 value={selectedDirection} 
                 onValueChange={(value) => {
                   setSelectedDirection(value);
-                  // When a new direction is selected, clear subsequent selections
                   setSelectedStopId('');
                   setStops([]);
                   setPredictions([]);
@@ -293,7 +327,7 @@ export function BusView() {
                 <SelectTrigger id="direction-select" className="w-full">
                   <SelectValue placeholder={
                       isLoading.directions ? "Loading directions..." :
-                      (directions.length === 0 ? "No directions found" : "Select a direction")
+                      (directions.length === 0 && !isLoading.directions ? "No directions for this route" : "Select a direction")
                   } />
                 </SelectTrigger>
                 <SelectContent>
@@ -324,7 +358,7 @@ export function BusView() {
                 <SelectTrigger id="stop-select" className="w-full">
                   <SelectValue placeholder={
                     isLoading.stops ? "Loading stops..." :
-                    (stops.length === 0 ? "No stops found" : "Select a stop")
+                    (stops.length === 0 && !isLoading.stops ? "No stops for this direction" : "Select a stop")
                   } />
                 </SelectTrigger>
                 <SelectContent>
@@ -346,13 +380,16 @@ export function BusView() {
         </CardContent>
       </Card>
 
-      {isLoading.predictions && (
+      {!selectedRoute && !isLoading.routes && renderInitialContent()}
+
+
+      {isLoading.predictions && selectedStopId && (
         <div className="flex items-center justify-center p-4">
           <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading predictions...
         </div>
       )}
 
-      {predictions.length > 0 && (
+      {predictions.length > 0 && selectedStopId && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -366,7 +403,7 @@ export function BusView() {
                   <div className="font-semibold">Route <strong>{p.rt}</strong> to <strong>{p.des}</strong></div>
                   <div className="text-muted-foreground text-xs">Direction: {p.rtdir}</div>
                   <div className="mt-1">
-                    Arrival: <strong>{formatPredictionTime(p.prdtm)}</strong> ({p.prdctdn})
+                    Arrival: <strong>{formatPredictionTime(p.prdtm)}</strong> (Est. {p.prdctdn})
                     {p.dly && <span className="ml-2 px-2 py-0.5 bg-destructive/20 text-destructive text-xs rounded-full">Delayed</span>}
                   </div>
                 </li>
@@ -378,7 +415,8 @@ export function BusView() {
       
       {selectedStopId && !isLoading.predictions && predictions.length === 0 && !error && (
          <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-6 text-center">
+                <Info className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
                 <p className="text-muted-foreground">No bus predictions available for this stop at the moment, or the selected route may not service this stop directly.</p>
             </CardContent>
          </Card>
@@ -386,3 +424,4 @@ export function BusView() {
     </div>
   );
 }
+

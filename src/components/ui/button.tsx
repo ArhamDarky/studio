@@ -42,6 +42,13 @@ export interface ButtonProps
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : "button"
+    
+    // Ensure children exist and have props before trying to access className on an icon child
+    // This is a common pattern if you intend to style icons passed as children differently.
+    // However, the original cva already targets `[&_svg]` for styling, which is generally preferred.
+    // If specific icon sizing based on button size is needed beyond `[&_svg]:size-4`, it could be handled here.
+    // For now, the `[&_svg]:size-4` in cva should cover most cases.
+
     return (
       <Comp
         className={cn(buttonVariants({ variant, size, className }))}

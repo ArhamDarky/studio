@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Wind, Info, Users, Linkedin, Briefcase, GraduationCap } from 'lucide-react';
+import { Button } from '@/components/ui/button'; // Added import for Button
 
 export const metadata: Metadata = {
   title: 'About ChiCommute',

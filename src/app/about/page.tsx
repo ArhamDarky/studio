@@ -1,10 +1,11 @@
+
 import type { Metadata } from 'next';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Wind, Info, Users, Linkedin, Briefcase, GraduationCap } from 'lucide-react';
-import { Button } from '@/components/ui/button'; // Added import for Button
+import { Button } from '@/components/ui/button';
 
 export const metadata: Metadata = {
   title: 'About ChiCommute',
@@ -127,11 +128,12 @@ export default function AboutPage() {
           </CardHeader>
           <CardContent className="p-6 pt-0">
             <ul className="list-disc list-inside space-y-2 text-foreground/80">
-              <li>Real-time bus tracking across all CTA routes.</li>
-              <li>Live train tracking for all CTA 'L' lines.</li>
-              <li>Metra commuter rail information (under development).</li>
-              <li>User-friendly dashboard for an at-a-glance overview.</li>
-              <li>Mobile-responsive design for on-the-go access.</li>
+              <li>Real-time CTA bus tracking: Select routes, directions, and stops for live arrival predictions.</li>
+              <li>Live CTA 'L' train tracking: Choose from major stations to view upcoming train arrivals, line details, and destinations.</li>
+              <li>Integrated Dashboard: Access both bus and train tracking modules from a single, convenient dashboard.</li>
+              <li>User-Friendly Interface: Navigate easily with intuitive selectors and clear presentation of transit data.</li>
+              <li>Mobile-Responsive Design: Check commute information on any device, anytime, anywhere.</li>
+              <li>Metra Commuter Rail: Information for Metra lines (currently a placeholder, with future updates planned).</li>
             </ul>
           </CardContent>
         </Card>
@@ -145,11 +147,13 @@ export default function AboutPage() {
               This application is proudly built with modern web technologies including:
             </p>
             <ul className="list-disc list-inside space-y-1 mt-2 text-muted-foreground">
-                <li>Next.js (App Router)</li>
-                <li>React & TypeScript</li>
-                <li>Tailwind CSS</li>
-                <li>ShadCN UI Components</li>
-                <li>Genkit (for AI-powered features)</li>
+                <li>Next.js (App Router) for a fast, modern web experience.</li>
+                <li>React and TypeScript for robust and maintainable component-based UI.</li>
+                <li>Tailwind CSS for utility-first styling.</li>
+                <li>ShadCN UI Components for a polished and accessible user interface.</li>
+                <li>Node.js (via Next.js API Routes) for backend data fetching.</li>
+                <li>CTA Bus Tracker API & CTA Train Tracker API for real-time transit data.</li>
+                <li>Genkit (for potential future AI-powered enhancements).</li>
             </ul>
           </CardContent>
         </Card>
